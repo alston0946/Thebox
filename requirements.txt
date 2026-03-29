@@ -1,0 +1,7 @@
+akshare
+pandas==2.2.3
+numpy
+requests
+lxml
+html5lib
+beautifulsoup4
