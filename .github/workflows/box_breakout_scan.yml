@@ -1,0 +1,57 @@
+name: box-breakout-scan
+          path: downloaded_artifacts
+
+      - name: Merge outputs
+        run: |
+          python - <<'PY'
+          import os
+          import glob
+          import pandas as pd
+
+          os.makedirs("output", exist_ok=True)
+
+          batch_files = glob.glob("downloaded_artifacts/**/box_breakout_batch_*.csv", recursive=True)
+          failed_files = glob.glob("downloaded_artifacts/**/box_breakout_failed_batch_*.csv", recursive=True)
+          summary_files = glob.glob("downloaded_artifacts/**/summary_batch_*.txt", recursive=True)
+
+          if batch_files:
+              dfs = [pd.read_csv(f) for f in batch_files if os.path.getsize(f) > 0]
+              if dfs:
+                  out_df = pd.concat(dfs, ignore_index=True)
+                  if not out_df.empty:
+                      out_df = out_df.sort_values(
+                          by=["window", "score", "breakout_pct_vs_upper", "inbox_ratio_pct"],
+                          ascending=[False, False, False, False]
+                      ).reset_index(drop=True)
+                  out_df.to_csv("output/box_breakout_merged.csv", index=False, encoding="utf-8-sig")
+              else:
+                  pd.DataFrame().to_csv("output/box_breakout_merged.csv", index=False, encoding="utf-8-sig")
+          else:
+              pd.DataFrame().to_csv("output/box_breakout_merged.csv", index=False, encoding="utf-8-sig")
+
+          if failed_files:
+              dfs = [pd.read_csv(f) for f in failed_files if os.path.getsize(f) > 0]
+              if dfs:
+                  failed_df = pd.concat(dfs, ignore_index=True)
+                  failed_df.to_csv("output/box_breakout_failed_merged.csv", index=False, encoding="utf-8-sig")
+              else:
+                  pd.DataFrame().to_csv("output/box_breakout_failed_merged.csv", index=False, encoding="utf-8-sig")
+          else:
+              pd.DataFrame().to_csv("output/box_breakout_failed_merged.csv", index=False, encoding="utf-8-sig")
+
+          with open("output/run_summary_merged.txt", "w", encoding="utf-8") as f:
+              for sf in sorted(summary_files):
+                  f.write(f"===== {os.path.basename(sf)} =====\n")
+                  with open(sf, "r", encoding="utf-8") as rf:
+                      f.write(rf.read())
+                  f.write("\n\n")
+          PY
+
+      - name: Upload merged outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: box-breakout-merged-results
+          path: |
+            output/box_breakout_merged.csv
+            output/box_breakout_failed_merged.csv
+            output/run_summary_merged.txt
