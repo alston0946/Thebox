@@ -54,6 +54,7 @@ jobs:
   merge-results:
     needs: run-scan
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -62,6 +63,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -81,8 +88,17 @@ jobs:
           failed_files = glob.glob("downloaded_artifacts/**/box_breakout_failed_batch_*.csv", recursive=True)
           summary_files = glob.glob("downloaded_artifacts/**/summary_batch_*.txt", recursive=True)
 
+          # 合并命中结果
           if batch_files:
-              dfs = [pd.read_csv(f) for f in batch_files if os.path.getsize(f) > 0]
+              dfs = []
+              for f in batch_files:
+                  if os.path.exists(f) and os.path.getsize(f) > 0:
+                      try:
+                          df = pd.read_csv(f)
+                          dfs.append(df)
+                      except Exception as e:
+                          print(f"读取批次结果失败: {f} | {e}")
+
               if dfs:
                   out_df = pd.concat(dfs, ignore_index=True)
                   if not out_df.empty:
@@ -96,8 +112,17 @@ jobs:
           else:
               pd.DataFrame().to_csv("output/box_breakout_merged.csv", index=False, encoding="utf-8-sig")
 
+          # 合并失败记录
           if failed_files:
-              dfs = [pd.read_csv(f) for f in failed_files if os.path.getsize(f) > 0]
+              dfs = []
+              for f in failed_files:
+                  if os.path.exists(f) and os.path.getsize(f) > 0:
+                      try:
+                          df = pd.read_csv(f)
+                          dfs.append(df)
+                      except Exception as e:
+                          print(f"读取失败记录失败: {f} | {e}")
+
               if dfs:
                   failed_df = pd.concat(dfs, ignore_index=True)
                   failed_df.to_csv("output/box_breakout_failed_merged.csv", index=False, encoding="utf-8-sig")
@@ -106,12 +131,19 @@ jobs:
           else:
               pd.DataFrame().to_csv("output/box_breakout_failed_merged.csv", index=False, encoding="utf-8-sig")
 
+          # 合并 summary
           with open("output/run_summary_merged.txt", "w", encoding="utf-8") as f:
-              for sf in sorted(summary_files):
-                  f.write(f"===== {os.path.basename(sf)} =====\n")
-                  with open(sf, "r", encoding="utf-8") as rf:
-                      f.write(rf.read())
-                  f.write("\n\n")
+              if summary_files:
+                  for sf in sorted(summary_files):
+                      f.write(f"===== {os.path.basename(sf)} =====\n")
+                      try:
+                          with open(sf, "r", encoding="utf-8") as rf:
+                              f.write(rf.read())
+                      except Exception as e:
+                          f.write(f"读取失败: {e}\n")
+                      f.write("\n\n")
+              else:
+                  f.write("没有找到 summary 文件。\n")
           PY
 
       - name: Upload merged outputs
