@@ -49,8 +49,8 @@ FAILED_FILE = os.path.join(OUTPUT_DIR, f"box_breakout_failed_batch_{BATCH_INDEX}
 SUMMARY_FILE = os.path.join(OUTPUT_DIR, f"summary_batch_{BATCH_INDEX}.txt")
 
 START_DATE = "20240101"
-END_DATE = "20260328"
-TARGET_DATE = pd.Timestamp.today().strftime("%Y%m%d")
+END_DATE = pd.Timestamp.today().strftime("%Y%m%d")
+TARGET_DATE = pd.Timestamp.today().normalize()
 
 
 # =========================
