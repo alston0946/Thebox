@@ -50,7 +50,7 @@ SUMMARY_FILE = os.path.join(OUTPUT_DIR, f"summary_batch_{BATCH_INDEX}.txt")
 
 START_DATE = "20240101"
 END_DATE = "20260328"
-TARGET_DATE = pd.Timestamp("2026-03-28")
+TARGET_DATE = pd.Timestamp.today().strftime("%Y%m%d")
 
 
 # =========================
