@@ -3,8 +3,8 @@ name: box-breakout-scan
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 9 * * *"
-
+    - cron: "30 16 * * *"
+      timezone: "Asia/Shanghai"
 jobs:
   run-scan:
     runs-on: ubuntu-latest
@@ -144,6 +144,62 @@ jobs:
                       f.write("\n\n")
               else:
                   f.write("没有找到 summary 文件。\n")
+          PY
+
+      - name: Send email with merged results
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: |
+          python - <<'PY'
+          import os
+          import smtplib
+          from email.message import EmailMessage
+
+          smtp_host = os.environ["SMTP_HOST"]
+          smtp_port = int(os.environ["SMTP_PORT"])
+          smtp_user = os.environ["SMTP_USER"]
+          smtp_pass = os.environ["SMTP_PASS"]
+          mail_to = os.environ["MAIL_TO"]
+
+          files_to_attach = [
+              "output/box_breakout_merged.csv",
+              "output/box_breakout_failed_merged.csv",
+              "output/run_summary_merged.txt",
+          ]
+
+          msg = EmailMessage()
+          msg["Subject"] = "GitHub Actions 箱体突破选股结果"
+          msg["From"] = smtp_user
+          msg["To"] = mail_to
+          msg.set_content(
+              "你好，\n\n"
+              "这是今日 GitHub Actions 自动运行的箱体突破选股结果。\n"
+              "附件包括：\n"
+              "1. box_breakout_merged.csv\n"
+              "2. box_breakout_failed_merged.csv\n"
+              "3. run_summary_merged.txt\n"
+          )
+
+          for path in files_to_attach:
+              if os.path.exists(path):
+                  with open(path, "rb") as f:
+                      data = f.read()
+                  filename = os.path.basename(path)
+                  if filename.endswith(".csv"):
+                      maintype, subtype = "text", "csv"
+                  else:
+                      maintype, subtype = "text", "plain"
+                  msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
+
+          with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+              server.login(smtp_user, smtp_pass)
+              server.send_message(msg)
+
+          print("邮件发送成功")
           PY
 
       - name: Upload merged outputs
