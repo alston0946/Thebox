@@ -5,6 +5,7 @@ on:
   schedule:
     - cron: "30 16 * * *"
       timezone: "Asia/Shanghai"
+
 jobs:
   run-scan:
     runs-on: ubuntu-latest
@@ -88,7 +89,6 @@ jobs:
           failed_files = glob.glob("downloaded_artifacts/**/box_breakout_failed_batch_*.csv", recursive=True)
           summary_files = glob.glob("downloaded_artifacts/**/summary_batch_*.txt", recursive=True)
 
-          # 合并命中结果
           if batch_files:
               dfs = []
               for f in batch_files:
@@ -112,7 +112,6 @@ jobs:
           else:
               pd.DataFrame().to_csv("output/box_breakout_merged.csv", index=False, encoding="utf-8-sig")
 
-          # 合并失败记录
           if failed_files:
               dfs = []
               for f in failed_files:
@@ -131,7 +130,6 @@ jobs:
           else:
               pd.DataFrame().to_csv("output/box_breakout_failed_merged.csv", index=False, encoding="utf-8-sig")
 
-          # 合并 summary
           with open("output/run_summary_merged.txt", "w", encoding="utf-8") as f:
               if summary_files:
                   for sf in sorted(summary_files):
@@ -147,6 +145,7 @@ jobs:
           PY
 
       - name: Send email with merged results
+        continue-on-error: true
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
@@ -195,7 +194,10 @@ jobs:
                       maintype, subtype = "text", "plain"
                   msg.add_attachment(data, maintype=maintype, subtype=subtype, filename=filename)
 
-          with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+          with smtplib.SMTP(smtp_host, smtp_port) as server:
+              server.ehlo()
+              server.starttls()
+              server.ehlo()
               server.login(smtp_user, smtp_pass)
               server.send_message(msg)
 
