@@ -29,6 +29,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 CODE_FILE = os.path.join(DATA_DIR, "a_share_codes_for_akshare.csv")
 ST_FILE = os.path.join(DATA_DIR, "st_stocks.csv")
+BELOW_8B_FILE = os.path.join(DATA_DIR, "a_share_below_8b.csv")
 
 
 # =========================
@@ -48,9 +49,10 @@ OUTPUT_FILE = os.path.join(OUTPUT_DIR, f"box_breakout_batch_{BATCH_INDEX}.csv")
 FAILED_FILE = os.path.join(OUTPUT_DIR, f"box_breakout_failed_batch_{BATCH_INDEX}.csv")
 SUMMARY_FILE = os.path.join(OUTPUT_DIR, f"summary_batch_{BATCH_INDEX}.txt")
 
-START_DATE = "20240101"
+# 自动日期
 END_DATE = pd.Timestamp.today().strftime("%Y%m%d")
 TARGET_DATE = pd.Timestamp.today().normalize()
+START_DATE = "20240101"
 
 
 # =========================
@@ -100,6 +102,17 @@ def safe_to_datetime(series):
     return pd.to_datetime(series, errors="coerce")
 
 
+def read_csv_auto(path: str) -> pd.DataFrame:
+    encodings = ["utf-8-sig", "utf-8", "gbk", "gb18030"]
+    last_err = None
+    for enc in encodings:
+        try:
+            return pd.read_csv(path, dtype=str, encoding=enc)
+        except Exception as e:
+            last_err = e
+    raise last_err
+
+
 def standardize_hist_tx(df):
     rename_map = {}
 
@@ -145,15 +158,52 @@ def calc_ma(df, windows=(20, 60)):
 
 
 def load_st_symbols():
-    df = pd.read_csv(ST_FILE)
+    df = read_csv_auto(ST_FILE)
     if "ticker" not in df.columns:
         raise ValueError(f"ST 文件里没有 ticker 列，实际列名: {list(df.columns)}")
-    s = df["ticker"].astype(str).str.strip().str.zfill(6)
-    return set(s.dropna().tolist())
+    s = df["ticker"].astype(str).str.strip().str.extract(r"(\d{6})", expand=False)
+    return set(s.dropna().str.zfill(6).tolist())
+
+
+def load_below_8b_symbols():
+    """
+    从 data/a_share_below_8b.csv 读取 80 亿以下股票代码
+    兼容常见列：ticker / symbol / secID / 代码
+    最终统一为 6 位代码集合
+    """
+    if not os.path.exists(BELOW_8B_FILE):
+        print(f"警告: 未找到 {BELOW_8B_FILE}，将不做 80 亿以下过滤")
+        return set()
+
+    df = read_csv_auto(BELOW_8B_FILE)
+
+    code_col = None
+    for c in ["ticker", "symbol", "secID", "代码", "stock_code", "证券代码", "股票代码"]:
+        if c in df.columns:
+            code_col = c
+            break
+
+    if code_col is None:
+        raise ValueError(f"a_share_below_8b.csv 缺少代码列，当前列名: {list(df.columns)}")
+
+    codes = (
+        df[code_col]
+        .astype(str)
+        .str.extract(r"(\d{6})", expand=False)
+        .dropna()
+        .str.zfill(6)
+        .tolist()
+    )
+    return set(codes)
 
 
 def load_universe_from_csv():
-    df = pd.read_csv(CODE_FILE)
+    """
+    读取本地股票池，并先后过滤：
+    1. ST
+    2. 市值小于 80 亿
+    """
+    df = read_csv_auto(CODE_FILE)
 
     if "symbol" not in df.columns:
         raise ValueError("代码文件里没有 symbol 列")
@@ -168,9 +218,22 @@ def load_universe_from_csv():
     else:
         out["name"] = out["symbol"]
 
-    st_codes = load_st_symbols()
     out["code6"] = out["symbol"].str[-6:]
+
+    # 过滤 ST
+    st_codes = load_st_symbols()
+    before_st = len(out)
     out = out[~out["code6"].isin(st_codes)].copy()
+    after_st = len(out)
+
+    # 过滤 80 亿以下
+    below_8b_codes = load_below_8b_symbols()
+    before_cap = len(out)
+    out = out[~out["code6"].isin(below_8b_codes)].copy()
+    after_cap = len(out)
+
+    print(f"过滤 ST 前: {before_st}，过滤后: {after_st}")
+    print(f"过滤 80亿以下前: {before_cap}，过滤后: {after_cap}")
 
     if TEST_LIMIT is not None:
         out = out.head(TEST_LIMIT).copy()
@@ -387,7 +450,7 @@ def evaluate_one_stock(symbol, name):
 def main():
     start_time = time.perf_counter()
 
-    print("1) 读取本地全市场股票列表（已过滤ST）...")
+    print("1) 读取本地全市场股票列表（已过滤 ST 和 80亿以下）...")
     universe = load_universe_from_csv()
     universe = split_universe_for_batch(universe)
 
@@ -468,6 +531,7 @@ def main():
     summary_lines = [
         f"batch_index={BATCH_INDEX}",
         f"batch_total={BATCH_TOTAL}",
+        f"target_date={TARGET_DATE.strftime('%Y-%m-%d')}",
         f"stocks_scanned={len(universe)}",
         f"matched={len(matched)}",
         f"failed={len(failed)}",
