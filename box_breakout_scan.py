@@ -70,7 +70,7 @@ LOOKBACK_BARS = 260
 
 # 更细的窗口，避免漏掉 45/55 这类箱体
 MIN_BOX_DAYS = 40
-BOX_WINDOWS = list(range(40, 101, 1))
+BOX_WINDOWS = list(range(40, 150, 1))
 
 MIN_BOX_WIDTH_PCT = 0.04
 MAX_BOX_WIDTH_PCT = 0.20
